@@ -1,0 +1,123 @@
+    version: 2
+    jobs:
+      build:
+        docker:
+          - image: docker:18.01.0-ce-git
+        working_directory: /tmp/hcppipelines
+        steps:
+          - checkout
+          - run:
+              name: Install parallel, gzip, python3
+              command: |
+                apk add --no-cache pigz python3 tar
+                mkdir -p /tmp/hcppipelines/docker/
+          - restore_cache:
+              keys:
+                - docker-v5-{{ .Branch }}-{{ .Revision }}
+                - docker-v5-{{ .Branch }}-
+                - docker-v5-master-
+                - docker-v5-
+          - setup_remote_docker
+          - run:
+              name: git_describe
+              command: git describe --tags > version
+          - run:
+              name: Load Docker image cache
+              no_output_timeout: 30m
+              command: |
+                docker info
+                set +o pipefail
+                if [ -f /tmp/hcppipelines/docker/docker.tar ]; then
+                  docker load -i /tmp/hcppipelines/docker/docker.tar
+                  docker images
+                fi
+          - run:
+              name: Build Docker image
+              no_output_timeout: 120m
+              command: |
+                docker build \
+                  --cache-from=kasbohm/hcppipelines \
+                  --rm=false \
+                  -t kasbohm/hcppipelines:latest \
+                  --build-arg BUILD_DATE=`date -u +"%Y-%m-%dT%H:%M:%SZ"` \
+                  --build-arg VCS_REF=`git rev-parse --short HEAD` \
+                  --build-arg VERSION=`git describe --tags` . \
+                && e=0 && break || sleep 15
+          - run:
+              name: Smoke?
+              command: |
+                DOCKERVERSION=$(docker run -ti --rm kasbohm/hcppipelines --version)
+                echo "$CIRCLE_TAG"
+                echo "$DOCKERVERSION"
+          - run:
+              name: docker_save
+              no_output_timeout: 120m
+              command: |
+                mkdir -p /tmp/hcppipelines/docker/
+                docker save neurodebian:jessie-non-free kasbohm/hcppipelines:latest \
+                -o /tmp/hcppipelines/docker/docker.tar
+
+          - persist_to_workspace:
+              root: /tmp/hcppipelines
+              paths: 
+                - docker/docker.tar
+      get_data:
+        docker:
+          - image: docker:18.01.0-ce-git
+        steps:
+          - run:
+              name: get_data
+              command: |
+                apk add --no-cache wget tar
+                mkdir -p /tmp/hcppipelines/data
+                wget -c -O /tmp/hcp_example_bids.zip "https://files.osf.io/v1/resources/9q7dv/providers/osfstorage/5a8efffe91b689000c9f5ce5"
+                unzip /tmp/hcp_example_bids.zip -d /tmp/hcppipelines/data/
+          - persist_to_workspace:
+              root: /tmp/hcppipelines
+              paths: 
+                - data
+      test:
+        machine: true
+        steps:
+          - attach_workspace:
+              at: /tmp/hcppipelines
+          - run:
+              name: Load Docker image
+              no_output_timeout: 30m
+              command: |
+                docker info
+                set +o pipefail
+                docker load -i /tmp/hcppipelines/docker/docker.tar
+                docker images
+          - run:
+              name: Fix bids dataset for struct processing
+              command: |
+                rm -rf /tmp/hcppipelines/data/hcp_example_bids_v3/sub-100307/func/
+                rm -rf /tmp/hcppipelines/data/hcp_example_bids_v3/sub-100307/fmap/sub-100307_acq-EMOTIONLR_dir-*
+                echo . > /tmp/hcppipelines/data/hcp_example_bids_v3/README
+          - run:
+              name: Processdata
+              no_output_timeout: 240m
+              command: |              
+                mkdir /tmp/hcppipelines/outputs
+                docker run -ti --rm --read-only -v /tmp/:/tmp/ -v /var/tmp/:/var/tmp/ -v /tmp/hcppipelines/data/hcp_example_bids_v3:/bids_dataset -v /tmp/hcppipelines/outputs:/outputs kasbohm/hcppipelines /bids_dataset /outputs participant --participant_label 100307 --stages PreFreeSurfer --license_key="*CxjskRdd7" --n_cpus 2
+          - save_cache:
+              key: docker-v5-{{ .Branch }}-{{ .Revision }}-{{ epoch }}
+              paths: 
+                  - /tmp/hcppipelines/docker/docker.tar
+          - store_artifacts:
+              path: /tmp/hcppipelines/docker/docker.tar
+              destination: dockerfile.tar
+          - store_artifacts:
+              path: /tmp/hcppipelines/outputs/
+
+    workflows:
+      version: 2
+      build-test:
+        jobs:
+          - build
+          - get_data
+          - test:
+              requires:
+                - build
+                - get_data

@@ -37,6 +37,8 @@ RUN apt-get -qq update && \
       --exclude='freesurfer/lib/qt' && \
     echo "cHJpbnRmICJrcnp5c3p0b2YuZ29yZ29sZXdza2lAZ21haWwuY29tXG41MTcyXG4gKkN2dW12RVYzelRmZ1xuRlM1Si8yYzFhZ2c0RVxuIiA+IC9vcHQvZnJlZXN1cmZlci9saWNlbnNlLnR4dAo=" | base64 -d | sh
 
+RUN rm -rf freesurfer-Linux-centos4_x86_64-stable-pub-v5.3.0-HCP.tar.gz
+
 # Set up the environment
 ENV OS=Linux \
     FS_OVERRIDE=0 \
@@ -55,6 +57,38 @@ ENV OS=Linux \
     MNI_PERL5LIB=/opt/freesurfer/mni/lib/perl5/5.8.5 \
     PATH=/opt/freesurfer/bin:/opt/freesurfer/fsfast/bin:/opt/freesurfer/tktools:/opt/freesurfer/mni/bin:$PATH
 
+# Install FSL 5.0.10 now to ensure it is not removed
+ENV FSLVERSION="5.0.10" \
+    FSLINSTALLPATH="/usr/share/fsl/" \
+    FSLDIR=$FSLINSTALLPATH/$FSLVERSION \
+    FSLBINARY=fsl-5.0.10-centos7_64.tar.gz
+
+RUN wget -q https://fsl.fmrib.ox.ac.uk/fsldownloads/fsl-5.0.10-centos7_64.tar.gz
+
+RUN mkdir -p $FSLDIR && \
+    tar xvzf $FSLBINARY -C $FSLDIR --strip-components 1 
+
+RUN rm -rf $FSLBINARY
+
+# Configure environment
+ENV FSL_DIR="${FSLDIR}" \
+    FSLOUTPUTTYPE=NIFTI_GZ \
+    PATH=$FSLDIR/bin:$PATH \
+    FSLMULTIFILEQUIT=TRUE \
+    POSSUMDIR=$FSLDIR \
+    LD_LIBRARY_PATH=$FSLDIR/lib:$LD_LIBRARY_PATH \
+    FSLTCLSH=/usr/bin/tclsh \
+    FSLWISH=/usr/bin/wish \
+    FSLOUTPUTTYPE=NIFTI_GZ
+
+# Install connectome-workbench
+WORKDIR /opt
+RUN apt-get update && apt-get install -y connectome-workbench unzip
+RUN wget -q https://www.humanconnectome.org/storage/app/media/workbench/workbench-linux64-v1.3.2.zip -O wb.zip \
+    && unzip wb.zip \
+    && rm wb.zip
+ENV CARET7DIR="/opt/workbench/bin_linux64"
+
 # Install MCR 2016b
 ENV MATLABCMD="/opt/matlabmcr-2016b/v91/toolbox/matlab" \
     MATLAB_COMPILER_RUNTIME="/opt/matlabmcr-2016b/v91" \
@@ -65,7 +99,6 @@ RUN apt-get update -qq \
        libxext6 \
        libxpm-dev \
        libxt6 \
-       unzip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
     && echo "Downloading MATLAB Compiler Runtime ..." \
@@ -82,14 +115,7 @@ RUN curl -fsSLO https://repo.continuum.io/miniconda/Miniconda2-4.5.4-Linux-x86_6
     conda config --add channels conda-forge && \
     conda install -y mkl mkl-service numpy nibabel pandas && sync && \
     conda clean -tipsy && sync && \
-    pip install --no-cache-dir pybids[analysis]==0.6.3
-
-# Install connectome-workbench
-WORKDIR /opt
-RUN wget -q https://ftp.humanconnectome.org/workbench/workbench-linux64-v1.3.0.zip -O wb.zip \
-    && unzip wb.zip \
-    && rm wb.zip
-ENV CARET7DIR="/opt/workbench/bin_linux64"
+    pip install --no-cache-dir pybids[analysis]==0.9.1
 
 # Install HCP Pipelines and MSM binaries
 RUN apt-get -qq update && \
@@ -126,40 +152,23 @@ ENV HCPPIPEDIR_Templates=${HCPPIPEDIR}/global/templates \
 RUN wget -qO- https://deb.nodesource.com/setup_10.x | bash - && \
     apt-get update && \
     apt-get install -y --no-install-recommends nodejs && \
-    npm install -g bids-validator@0.26.13 && \
+    npm install -g bids-validator@1.2.4 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Install FSL 5.0.9 now to ensure it is not removed
-RUN apt-get update && \
-    apt-get install -y fsl=5.0.9-4~nd80+1 && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-# Configure environment
-ENV FSLDIR=/usr/share/fsl/5.0
-ENV FSL_DIR="${FSLDIR}" \
-    FSLOUTPUTTYPE=NIFTI_GZ \
-    PATH=/usr/lib/fsl/5.0:$PATH \
-    FSLMULTIFILEQUIT=TRUE \
-    POSSUMDIR=/usr/share/fsl/5.0 \
-    LD_LIBRARY_PATH=/usr/lib/fsl/5.0:$LD_LIBRARY_PATH \
-    FSLTCLSH=/usr/bin/tclsh \
-    FSLWISH=/usr/bin/wish \
-    FSLOUTPUTTYPE=NIFTI_GZ
-
-# upgrade our libstdc++
+# upgrade our libstdc++ and freetype etc
 RUN echo "deb http://ftp.de.debian.org/debian stretch main" >> /etc/apt/sources.list && \
     apt-get update && \
-    apt-get install -y libstdc++6
+    apt-get install -y libstdc++6 
+
+#libfreetype6 libglib2.0-0 
 
 # overwrite matlab mcr shared object
 RUN rm /opt/matlabmcr-2016b/v91/sys/os/glnxa64/libstdc++.so.6 && \
     ln -s /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /opt/matlabmcr-2016b/v91/sys/os/glnxa64/libstdc++.so.6
 
 # install gradient_unwarp.py (v1.0.3)
-RUN pip install https://github.com/Washington-University/gradunwarp/archive/v1.0.3.zip
-
+RUN pip install https://github.com/Washington-University/gradunwarp/archive/v1.1.0.zip
 COPY run.py version /
 RUN chmod +x /run.py
 

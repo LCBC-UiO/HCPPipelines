@@ -9,7 +9,7 @@ from glob import glob
 from subprocess import Popen, PIPE
 from shutil import rmtree
 import subprocess
-from bids.grabbids import BIDSLayout
+from bids.layout import BIDSLayout
 from functools import partial
 from collections import OrderedDict
 
@@ -213,7 +213,7 @@ if (args.gdcoeffs != 'NONE') and ('PreFreeSurfer' in args.stages) and (args.anat
 
 run("bids-validator " + args.bids_dir)
 
-layout = BIDSLayout(args.bids_dir, exclude=['derivatives'])
+layout = BIDSLayout(args.bids_dir)
 subjects_to_analyze = []
 # only for a subset of subjects
 if args.participant_label:
@@ -227,20 +227,20 @@ else:
 if args.analysis_level == "participant":
     # find all T1s and skullstrip them
     for subject_label in subjects_to_analyze:
-        t1ws = [f.filename for f in layout.get(subject=subject_label,
-                                               type='T1w',
-                                               extensions=["nii.gz", "nii"])]
-        t2ws = [f.filename for f in layout.get(subject=subject_label,
-                                               type='T2w',
-                                               extensions=["nii.gz", "nii"])]
+        t1ws = [f.path for f in layout.get(subject=subject_label,
+                                               suffix='T1w',
+                                               extension="nii.gz")]
+        t2ws = [f.path for f in layout.get(subject=subject_label,
+                                               suffix='T2w',
+                                               extension="nii.gz")]
         assert (len(t1ws) > 0), "No T1w files found for subject %s!"%subject_label
         assert (len(t2ws) > 0), "No T2w files found for subject %s!"%subject_label
 
         available_resolutions = ["0.7", "0.8", "1"]
-        t1_zooms = nibabel.load(t1ws[0]).get_header().get_zooms()
+        t1_zooms = nibabel.load(t1ws[0]).header.get_zooms()
         t1_res = float(min(t1_zooms[:3]))
         t1_template_res = min(available_resolutions, key=lambda x:abs(float(x)-t1_res))
-        t2_zooms = nibabel.load(t2ws[0]).get_header().get_zooms()
+        t2_zooms = nibabel.load(t2ws[0]).header.get_zooms()
         t2_res = float(min(t2_zooms[:3]))
         t2_template_res = min(available_resolutions, key=lambda x:abs(float(x)-t2_res))
 
@@ -258,35 +258,39 @@ if args.analysis_level == "participant":
                      "seunwarpdir": "NONE"}
 
         if fieldmap_set:
-            t1_spacing = layout.get_metadata(t1ws[0])["DwellTime"]
-            t2_spacing = layout.get_metadata(t2ws[0])["DwellTime"]
+            t1_spacing = layout.get_metadata(t1ws[0])["EffectiveEchoSpacing"]
+            t2_spacing = layout.get_metadata(t2ws[0])["EffectiveEchoSpacing"]
 
             # use an unwarpdir specified on the command line
             # this is different from the SE direction
-            unwarpdir = args.anat_unwarpdir
-
+            if args.anat_unwarpdir is not "NONE":
+                unwarpdir = args.anat_unwarpdir
+            else:
+                unwarpdir = str(layout.get_metadata(t1ws[0])["PhaseEncodingDirection"])
+                unwarpdir = unwarpdir.replace("i","x").replace("j", "y").replace("k", "z") #Unneeded with HCP >= 4.0.
+            
             fmap_args.update({"t1samplespacing": "%.8f"%t1_spacing,
                               "t2samplespacing": "%.8f"%t2_spacing,
                               "unwarpdir": unwarpdir})
 
-            if fieldmap_set[0]["type"] == "phasediff":
+            if fieldmap_set[0]["suffix"] == "phasediff":
                 merged_file = "%s/tmp/%s/magfile.nii.gz"%(args.output_dir, subject_label)
-                run("mkdir -p %s/tmp/%s/ && fslmerge -t %s %s %s"%(args.output_dir,
+                run("mkdir -p %s/tmp/%s/ && fslmerge -t %s %s %s" % (args.output_dir,
                 subject_label,
                 merged_file,
-                fieldmap_set["magnitude1"],
-                fieldmap_set["magnitude2"]))
+                fieldmap_set[0]["magnitude1"],
+                fieldmap_set[0]["magnitude2"]))
 
-                phasediff_metadata = layout.get_metadata(fieldmap_set["phasediff"])
+                phasediff_metadata = layout.get_metadata(fieldmap_set[0]["phasediff"])
                 te_diff = phasediff_metadata["EchoTime2"] - phasediff_metadata["EchoTime1"]
                 # HCP expects TE in miliseconds
                 te_diff = te_diff*1000.0
 
                 fmap_args.update({"fmapmag": merged_file,
-                                  "fmapphase": fieldmap_set["phasediff"],
+                                  "fmapphase": fieldmap_set[0]["phasediff"],
                                   "echodiff": "%.6f"%te_diff,
                                   "avgrdcmethod": "SiemensFieldMap"})
-            elif fieldmap_set[0]["type"] == "epi":
+            elif fieldmap_set[0]["suffix"] == "epi":
                 SEPhaseNeg = None
                 SEPhasePos = None
                 for fieldmap in fieldmap_set:
@@ -321,7 +325,6 @@ if args.analysis_level == "participant":
                                   "seunwarpdir": seunwarpdir,
                                   "avgrdcmethod": "TOPUP"})
         #TODO add support for GE fieldmaps
-
         struct_stages_dict = OrderedDict([("PreFreeSurfer", partial(run_pre_freesurfer,
                                                 path=args.output_dir,
                                                 subject="sub-%s"%subject_label,
@@ -349,8 +352,8 @@ if args.analysis_level == "participant":
                 stage_func()
 
         bolds = [f.filename for f in layout.get(subject=subject_label,
-                                                type='bold',
-                                                extensions=["nii.gz", "nii"])]
+                                                suffix='bold',
+                                                extension="nii.gz")]
         for fmritcs in bolds:
             fmriname = "_".join(fmritcs.split("sub-")[-1].split("_")[1:]).split(".")[0]
             assert fmriname
@@ -360,7 +363,7 @@ if args.analysis_level == "participant":
                 fmriscout = "NONE"
 
             fieldmap_set = layout.get_fieldmap(fmritcs, return_list=True)
-            if fieldmap_set and len(fieldmap_set) == 2 and all(item["type"] == "epi" for item in fieldmap_set):
+            if fieldmap_set and len(fieldmap_set) == 2 and all(item["suffix"] == "epi" for item in fieldmap_set):
                 SEPhaseNeg = None
                 SEPhasePos = None
                 for fieldmap in fieldmap_set:
@@ -371,7 +374,7 @@ if args.analysis_level == "participant":
                         SEPhasePos = fieldmap['epi']
                 echospacing = layout.get_metadata(fmritcs)["EffectiveEchoSpacing"]
                 unwarpdir = layout.get_metadata(fmritcs)["PhaseEncodingDirection"]
-                unwarpdir = unwarpdir.replace("i","x").replace("j", "y").replace("k", "z")
+                unwarpdir = unwarpdir.replace("i","x").replace("j", "y").replace("k", "z") #Unneeded with HCP >= 4.0.
                 if len(unwarpdir) == 2:
                     unwarpdir = "-" + unwarpdir[0]
                 dcmethod = "TOPUP"
@@ -420,13 +423,13 @@ if args.analysis_level == "participant":
                 if stage in args.stages:
                     stage_func()
 
-        dwis = layout.get(subject=subject_label, type='dwi',
-                                                 extensions=["nii.gz", "nii"])
+        dwis = layout.get(subject=subject_label, suffix='dwi',
+                                                 extension="nii.gz")
 
         # print(dwis)
         # acqs = set(layout.get(target='acquisition', return_type='id',
-        #                       subject=subject_label, type='dwi',
-        #                       extensions=["nii.gz", "nii"]))
+        #                       subject=subject_label, suffix='dwi',
+        #                       extension="nii.gz"))
         # print(acqs)
         # posData = []
         # negData = []
@@ -434,8 +437,8 @@ if args.analysis_level == "participant":
         #     pos = "EMPTY"
         #     neg = "EMPTY"
         #     dwis = layout.get(subject=subject_label,
-        #                       type='dwi', acquisition=acq,
-        #                       extensions=["nii.gz", "nii"])
+        #                       suffix='dwi', acquisition=acq,
+        #                       extension="nii.gz")
         #     assert len(dwis) <= 2
         #     for dwi in dwis:
         #         dwi = dwi.filename
