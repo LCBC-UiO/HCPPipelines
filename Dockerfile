@@ -20,7 +20,7 @@ RUN apt-get -qq update && \
       wget && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
-    wget -qO- ftp://surfer.nmr.mgh.harvard.edu/pub/dist/freesurfer/5.3.0-HCP/freesurfer-Linux-centos4_x86_64-stable-pub-v5.3.0-HCP.tar.gz \
+    wget -qO- https://surfer.nmr.mgh.harvard.edu/pub/dist/freesurfer/6.0.1/freesurfer-Linux-centos6_x86_64-stable-pub-v6.0.1.tar.gz \
     | tar zxv -C /opt \
       --exclude='freesurfer/trctrain' \
       --exclude='freesurfer/subjects/fsaverage_sym' \
@@ -37,7 +37,7 @@ RUN apt-get -qq update && \
       --exclude='freesurfer/lib/qt' && \
     echo "cHJpbnRmICJrcnp5c3p0b2YuZ29yZ29sZXdza2lAZ21haWwuY29tXG41MTcyXG4gKkN2dW12RVYzelRmZ1xuRlM1Si8yYzFhZ2c0RVxuIiA+IC9vcHQvZnJlZXN1cmZlci9saWNlbnNlLnR4dAo=" | base64 -d | sh
 
-RUN rm -rf freesurfer-Linux-centos4_x86_64-stable-pub-v5.3.0-HCP.tar.gz
+RUN rm -rf freesurfer-Linux-centos6_x86_64-stable-pub-v6.0.1.tar.gz
 
 # Set up the environment
 ENV OS=Linux \
@@ -58,12 +58,12 @@ ENV OS=Linux \
     PATH=/opt/freesurfer/bin:/opt/freesurfer/fsfast/bin:/opt/freesurfer/tktools:/opt/freesurfer/mni/bin:$PATH
 
 # Install FSL 5.0.10 now to ensure it is not removed
-ENV FSLVERSION="5.0.10" \
+ENV FSLVERSION="6.0.1" \
     FSLINSTALLPATH="/usr/share/fsl/" \
     FSLDIR=$FSLINSTALLPATH/$FSLVERSION \
-    FSLBINARY=fsl-5.0.10-centos7_64.tar.gz
+    FSLBINARY=fsl-6.0.1-centos7_64.tar.gz
 
-RUN wget -q https://fsl.fmrib.ox.ac.uk/fsldownloads/fsl-5.0.10-centos7_64.tar.gz
+RUN wget -q https://fsl.fmrib.ox.ac.uk/fsldownloads/fsl-6.0.1-centos7_64.tar.gz
 
 RUN mkdir -p $FSLDIR && \
     tar xvzf $FSLBINARY -C $FSLDIR --strip-components 1 
@@ -121,7 +121,7 @@ RUN curl -fsSLO https://repo.continuum.io/miniconda/Miniconda2-4.5.4-Linux-x86_6
 RUN apt-get -qq update && \
     apt-get install -yq --no-install-recommends gcc g++ libglu1 && \
     rm -rf /tmp/* && \
-    wget -qO- https://github.com/Washington-University/Pipelines/archive/v3.26.1.tar.gz | tar xz -C /tmp && \
+    wget -qO- https://github.com/Washington-University/HCPpipelines/archive/v4.0.0.tar.gz | tar xz -C /tmp && \
     mv /tmp/* /opt/HCP-Pipelines && \
     rm -rf /tmp/* && \
     wget -qO- https://www.doc.ic.ac.uk/~ecr05/MSM_HOCR_v2/MSM_HOCR_v2-download.tgz | tar xz -C /tmp && \
@@ -160,8 +160,6 @@ RUN wget -qO- https://deb.nodesource.com/setup_10.x | bash - && \
 RUN echo "deb http://ftp.de.debian.org/debian stretch main" >> /etc/apt/sources.list && \
     apt-get update && \
     apt-get install -y libstdc++6 
-
-#libfreetype6 libglib2.0-0 
 
 # overwrite matlab mcr shared object
 RUN rm /opt/matlabmcr-2016b/v91/sys/os/glnxa64/libstdc++.so.6 && \
