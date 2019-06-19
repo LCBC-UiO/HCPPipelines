@@ -57,21 +57,19 @@ ENV OS=Linux \
     MNI_PERL5LIB=/opt/freesurfer/mni/lib/perl5/5.8.5 \
     PATH=/opt/freesurfer/bin:/opt/freesurfer/fsfast/bin:/opt/freesurfer/tktools:/opt/freesurfer/mni/bin:$PATH
 
-# Install FSL 5.0.10 now to ensure it is not removed
-ENV FSLVERSION="6.0.1" \
-    FSLINSTALLPATH="/usr/share/fsl/" \
-    FSLDIR=$FSLINSTALLPATH/$FSLVERSION \
-    FSLBINARY=fsl-6.0.1-centos7_64.tar.gz
-
+# Install FSL 6.0.1 now to ensure it is not removed
 RUN wget -q https://fsl.fmrib.ox.ac.uk/fsldownloads/fsl-6.0.1-centos7_64.tar.gz
 
-RUN mkdir -p $FSLDIR && \
-    tar xvzf $FSLBINARY -C $FSLDIR --strip-components 1 
+ENV FSLVERSION="6.0.1" \
+    FSLDIR="/usr/share/fsl/" \
+    FSLBINARY=fsl-6.0.1-centos7_64.tar.gz
 
-RUN rm -rf $FSLBINARY
+RUN mkdir -p $FSLDIR && \
+    tar xvzf $FSLBINARY -C $FSLDIR --strip-components 1 && \
+    rm -rf $FSLBINARY
 
 # Configure environment
-ENV FSL_DIR="${FSLDIR}" \
+ENV FSL_DIR="$FSLDIR" \
     FSLOUTPUTTYPE=NIFTI_GZ \
     PATH=$FSLDIR/bin:$PATH \
     FSLMULTIFILEQUIT=TRUE \
@@ -80,6 +78,8 @@ ENV FSL_DIR="${FSLDIR}" \
     FSLTCLSH=/usr/bin/tclsh \
     FSLWISH=/usr/bin/wish \
     FSLOUTPUTTYPE=NIFTI_GZ
+
+RUN $FSLDIR/etc/fslconf/fslpython_install.sh -f $FSLDIR
 
 # Install connectome-workbench
 WORKDIR /opt
