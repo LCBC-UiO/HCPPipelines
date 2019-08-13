@@ -54,7 +54,7 @@
               no_output_timeout: 120m
               command: |
                 mkdir -p /tmp/hcppipelines/docker/
-                docker save neurodebian:jessie-non-free kasbohm/hcppipelines:latest \
+                docker save ubuntu:xenial-20190515 kasbohm/hcppipelines:latest \
                 -o /tmp/hcppipelines/docker/docker.tar
 
           - persist_to_workspace:
