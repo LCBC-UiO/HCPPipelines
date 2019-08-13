@@ -58,7 +58,7 @@ def run_pre_freesurfer(**args):
     '--echodiff="{echodiff}" ' + \
     '--SEPhaseNeg="{SEPhaseNeg}" ' + \
     '--SEPhasePos="{SEPhasePos}" ' + \
-    '--echospacing="{echospacing}" ' + \
+    '--seechospacing="{echospacing}" ' + \
     '--seunwarpdir="{seunwarpdir}" ' + \
     '--t1samplespacing="{t1samplespacing}" ' + \
     '--t2samplespacing="{t2samplespacing}" ' + \
@@ -78,8 +78,7 @@ def run_freesurfer(**args):
       '--subjectDIR="{subjectDIR}" ' + \
       '--t1="{path}/{subject}/T1w/T1w_acpc_dc_restore.nii.gz" ' + \
       '--t1brain="{path}/{subject}/T1w/T1w_acpc_dc_restore_brain.nii.gz" ' + \
-      '--t2="{path}/{subject}/T1w/T2w_acpc_dc_restore.nii.gz" ' + \
-      '--printcom=""'
+      '--t2="{path}/{subject}/T1w/T2w_acpc_dc_restore.nii.gz" '
     cmd = cmd.format(**args)
 
     if not os.path.exists(os.path.join(args["subjectDIR"], "fsaverage")):
@@ -213,7 +212,7 @@ if (args.gdcoeffs != 'NONE') and ('PreFreeSurfer' in args.stages) and (args.anat
 
 run("bids-validator " + args.bids_dir)
 
-layout = BIDSLayout(args.bids_dir)
+layout = BIDSLayout(args.bids_dir, derivatives=False, absolute_paths=True)
 subjects_to_analyze = []
 # only for a subset of subjects
 if args.participant_label:
@@ -229,10 +228,10 @@ if args.analysis_level == "participant":
     for subject_label in subjects_to_analyze:
         t1ws = [f.path for f in layout.get(subject=subject_label,
                                                suffix='T1w',
-                                               extension="nii.gz")]
+                                               extensions=["nii.gz", "nii"])]
         t2ws = [f.path for f in layout.get(subject=subject_label,
                                                suffix='T2w',
-                                               extension="nii.gz")]
+                                               extensions=["nii.gz", "nii"])]
         assert (len(t1ws) > 0), "No T1w files found for subject %s!"%subject_label
         assert (len(t2ws) > 0), "No T2w files found for subject %s!"%subject_label
 
@@ -351,9 +350,9 @@ if args.analysis_level == "participant":
             if stage in args.stages:
                 stage_func()
 
-        bolds = [f.filename for f in layout.get(subject=subject_label,
+        bolds = [f.path for f in layout.get(subject=subject_label,
                                                 suffix='bold',
-                                                extension="nii.gz")]
+                                                extensions=["nii.gz", "nii"])]
         for fmritcs in bolds:
             fmriname = "_".join(fmritcs.split("sub-")[-1].split("_")[1:]).split(".")[0]
             assert fmriname
@@ -424,7 +423,7 @@ if args.analysis_level == "participant":
                     stage_func()
 
         dwis = layout.get(subject=subject_label, suffix='dwi',
-                                                 extension="nii.gz")
+                                                 extensions=["nii.gz", "nii"])
 
         # print(dwis)
         # acqs = set(layout.get(target='acquisition', return_type='id',
